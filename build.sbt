@@ -1,4 +1,4 @@
-name := "makka-scala"
+name := "whiteboardy"
 
 version := "1.0"
 
