@@ -1,11 +1,11 @@
-name := "whiteboardy"
+name := "devy"
 
 version := "1.0"
 
 scalaVersion := "2.13.1"
 
-lazy val akkaVersion = "2.6.9"
-lazy val akkaHttpVersion = "10.2.0"
+lazy val akkaVersion = "2.6.10"
+lazy val akkaHttpVersion = "10.2.1"
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
