@@ -11,8 +11,6 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 trait CreateTaskBoardUseCase {
-  implicit val ec: ExecutionContext
-
   def run(request: CreateTaskBoardRequest): Future[CreateTaskBoardResponse]
 }
 
@@ -30,7 +28,7 @@ class CreateTaskBoardUseCaseImpl(
 )(implicit val system: ActorSystem[_])
     extends CreateTaskBoardUseCase {
 
-  override implicit val ec: ExecutionContext = system.executionContext
+  private implicit val ec: ExecutionContext = system.executionContext
   private implicit val timeout: Timeout = Timeout(5.seconds)
 
   override def run(
