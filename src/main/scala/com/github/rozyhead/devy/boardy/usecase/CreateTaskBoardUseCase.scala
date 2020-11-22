@@ -8,6 +8,7 @@ import com.github.rozyhead.devy.boardy.aggregate.{
   TaskBoardIdGenerator
 }
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
+import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -30,6 +31,8 @@ class CreateTaskBoardUseCaseImpl(
 )(implicit val system: ActorSystem[_])
     extends CreateTaskBoardUseCase {
 
+  private val logger = LoggerFactory.getLogger(getClass)
+
   private implicit val ec: ExecutionContext = system.executionContext
   private implicit val timeout: Timeout = Timeout(5.seconds)
 
@@ -48,6 +51,7 @@ class CreateTaskBoardUseCaseImpl(
         )
       )
     } yield {
+      logger.info("TaskBoard created: {}", generated.taskBoardId)
       CreateTaskBoardResponse(generated.taskBoardId)
     }
 }
