@@ -1,17 +1,20 @@
 package com.github.rozyhead.devy.boardy.usecase
 
-import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
-import akka.actor.typed.Behavior
+import akka.actor.testkit.typed.scaladsl.{ScalaTestWithActorTestKit, TestProbe}
+import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.pattern.StatusReply
-import com.github.rozyhead.devy.boardy.aggregate.TaskBoardAggregate
+import com.github.rozyhead.devy.boardy.aggregate.TaskBoardIdGenerator.GenerateTaskBoardIdResponse
+import com.github.rozyhead.devy.boardy.aggregate.{
+  TaskBoardAggregate,
+  TaskBoardIdGenerator
+}
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
-import com.github.rozyhead.devy.boardy.service.TaskBoardIdGenerator
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.wordspec.AnyWordSpecLike
 
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext}
 
 class CreateTaskBoardUseCaseImplTest
     extends ScalaTestWithActorTestKit
@@ -21,34 +24,58 @@ class CreateTaskBoardUseCaseImplTest
   implicit val ec: ExecutionContext = testKit.system.executionContext
 
   private trait MockedTaskBoardIdGenerator {
-    def generateTaskBoardId: String
+    protected def replySuccess(
+        taskBoardId: => String
+    ): Behavior[TaskBoardIdGenerator.Command[_]] = {
+      Behaviors.receiveMessage[TaskBoardIdGenerator.Command[_]] { msg =>
+        msg match {
+          case TaskBoardIdGenerator.GenerateTaskBoardId(replyTo) =>
+            replyTo ! StatusReply.success(
+              GenerateTaskBoardIdResponse(
+                TaskBoardId(taskBoardId)
+              )
+            )
+        }
+        Behaviors.same
+      }
+    }
 
-    def mockedTaskBoardIdGenerator = {
-      val mocked = mock[TaskBoardIdGenerator]
+    protected val mockedTaskBoardIdGeneratorProxyBehavior: Behavior[
+      TaskBoardIdGenerator.Command[_]
+    ]
 
-      (mocked.generate _)
-        .expects()
-        .returning(Future(TaskBoardId(generateTaskBoardId)))
+    protected val taskBoardIdGeneratorProxyProbe
+        : TestProbe[TaskBoardIdGenerator.Command[_]] =
+      testKit.createTestProbe[TaskBoardIdGenerator.Command[_]]()
 
-      mocked
+    protected def mockedTaskBoardIdGeneratorProxy
+        : ActorRef[TaskBoardIdGenerator.Command[_]] = {
+      testKit.spawn(
+        Behaviors.monitor(
+          taskBoardIdGeneratorProxyProbe.ref,
+          mockedTaskBoardIdGeneratorProxyBehavior
+        )
+      )
     }
   }
 
   private trait MockedTaskBoardAggregateProxy {
-    val replyAck =
+    protected val replyAck: Behaviors.Receive[TaskBoardAggregate.Command] =
       Behaviors.receiveMessage[TaskBoardAggregate.Command] { msg =>
         msg.replyTo ! StatusReply.ack()
         Behaviors.same
       }
 
-    val mockedTaskBoardAggregateProxyBehavior: Behavior[
+    protected val mockedTaskBoardAggregateProxyBehavior: Behavior[
       TaskBoardAggregate.Command
     ]
 
-    val taskBoardAggregateProxyProbe =
+    protected val taskBoardAggregateProxyProbe
+        : TestProbe[TaskBoardAggregate.Command] =
       testKit.createTestProbe[TaskBoardAggregate.Command]()
 
-    def mockedTaskBoardAggregateProxy =
+    protected def mockedTaskBoardAggregateProxy
+        : ActorRef[TaskBoardAggregate.Command] =
       testKit.spawn(
         Behaviors.monitor(
           taskBoardAggregateProxyProbe.ref,
@@ -63,17 +90,20 @@ class CreateTaskBoardUseCaseImplTest
 
   "CreateTaskBoardUseCaseImpl" must {
     "return response with generated TaskBoardId" in new Fixture {
-      override def generateTaskBoardId: String = "task-board-id"
+      override val mockedTaskBoardIdGeneratorProxyBehavior
+          : Behavior[TaskBoardIdGenerator.Command[_]] =
+        replySuccess("task-board-id")
+
       override val mockedTaskBoardAggregateProxyBehavior
           : Behavior[TaskBoardAggregate.Command] = replyAck
 
       val sut = new CreateTaskBoardUseCaseImpl(
-        mockedTaskBoardIdGenerator,
+        mockedTaskBoardIdGeneratorProxy,
         mockedTaskBoardAggregateProxy
       )
 
-      val future = sut.run(CreateTaskBoardRequest("test"))
-      val response = Await.result(future, 1.second)
+      private val future = sut.run(CreateTaskBoardRequest("test"))
+      private val response = Await.result(future, 1.second)
 
       assert(
         response == CreateTaskBoardResponse(taskBoardId =
@@ -83,19 +113,22 @@ class CreateTaskBoardUseCaseImplTest
     }
 
     "call taskBoardAggregateProxy" in new Fixture {
-      override def generateTaskBoardId: String = "task-board-id"
+      override val mockedTaskBoardIdGeneratorProxyBehavior
+          : Behavior[TaskBoardIdGenerator.Command[_]] =
+        replySuccess("task-board-id")
+
       override val mockedTaskBoardAggregateProxyBehavior
           : Behavior[TaskBoardAggregate.Command] = replyAck
 
       val sut = new CreateTaskBoardUseCaseImpl(
-        mockedTaskBoardIdGenerator,
+        mockedTaskBoardIdGeneratorProxy,
         mockedTaskBoardAggregateProxy
       )
 
-      val future = sut.run(CreateTaskBoardRequest("test"))
+      private val future = sut.run(CreateTaskBoardRequest("test"))
       Await.result(future, 1.second)
 
-      val command = taskBoardAggregateProxyProbe
+      private val command = taskBoardAggregateProxyProbe
         .expectMessageType[TaskBoardAggregate.CreateTaskBoard]
 
       assert(command.taskBoardId == TaskBoardId("task-board-id"))

@@ -3,9 +3,11 @@ package com.github.rozyhead.devy.boardy.usecase
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.util.Timeout
-import com.github.rozyhead.devy.boardy.aggregate.TaskBoardAggregate
+import com.github.rozyhead.devy.boardy.aggregate.{
+  TaskBoardAggregate,
+  TaskBoardIdGenerator
+}
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
-import com.github.rozyhead.devy.boardy.service.TaskBoardIdGenerator
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -23,7 +25,7 @@ case class CreateTaskBoardResponse(
 )
 
 class CreateTaskBoardUseCaseImpl(
-    taskBoardIdGenerator: TaskBoardIdGenerator,
+    taskBoardIdGeneratorProxy: ActorRef[TaskBoardIdGenerator.Command[_]],
     taskBoardAggregateProxy: ActorRef[TaskBoardAggregate.Command]
 )(implicit val system: ActorSystem[_])
     extends CreateTaskBoardUseCase {
@@ -35,15 +37,17 @@ class CreateTaskBoardUseCaseImpl(
       request: CreateTaskBoardRequest
   ): Future[CreateTaskBoardResponse] =
     for {
-      taskBoardId <- taskBoardIdGenerator.generate
+      generated <- taskBoardIdGeneratorProxy.askWithStatus(
+        TaskBoardIdGenerator.GenerateTaskBoardId
+      )
       _ <- taskBoardAggregateProxy.askWithStatus(
         TaskBoardAggregate.CreateTaskBoard(
-          taskBoardId,
+          generated.taskBoardId,
           request.title,
           _
         )
       )
     } yield {
-      CreateTaskBoardResponse(taskBoardId)
+      CreateTaskBoardResponse(generated.taskBoardId)
     }
 }
