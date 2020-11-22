@@ -1,6 +1,6 @@
 package com.github.rozyhead.devy.boardy.domain.model
 
-case class TaskBoardId(value: String)
+case class TaskBoardId(value: String) extends AnyVal
 
 /**
   * @author takeshi
