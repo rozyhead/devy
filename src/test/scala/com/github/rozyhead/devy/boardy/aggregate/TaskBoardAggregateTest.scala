@@ -7,17 +7,67 @@ import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit
 import akka.persistence.typed.PersistenceId
 import com.github.rozyhead.devy.boardy.domain.model.{TaskBoard, TaskBoardId}
 import org.scalatest.BeforeAndAfterEach
-import org.scalatest.wordspec.AnyWordSpecLike
+import org.scalatest.freespec.AnyFreeSpecLike
 
-/**
-  * @author takeshi
-  */
 class TaskBoardAggregateTest
     extends ScalaTestWithActorTestKit(EventSourcedBehaviorTestKit.config)
-    with AnyWordSpecLike
+    with AnyFreeSpecLike
     with BeforeAndAfterEach {
 
   import TaskBoardAggregate._
+
+  "TaskBoard集約" - {
+
+    "ステータスがInitの場合" - {
+      "コマンドCreateTaskBoardを受け取ると" - {
+        "成功を返す" in {
+          // Given
+          // When
+          val result = runCreateTaskBoard("test", "title")
+          // Then
+          assert(result.reply == StatusReply.ack())
+        }
+
+        "イベントTaskBoardCreatedを記録する" in {
+          // Given
+          // When
+          val result = runCreateTaskBoard("test", "title")
+          // Then
+          assert(result.event == TaskBoardCreated(TaskBoardId("test"), "title"))
+        }
+
+        "ステータスがCreatedに変わる" in {
+          // Given
+          // When
+          val result = runCreateTaskBoard("test", "title")
+          // Then
+          assert(result.state == Created(TaskBoard(TaskBoardId("test"))))
+        }
+      }
+    }
+
+    "ステータスがCreatedの場合" - {
+      "(異常系)コマンドCreateTaskBoardを受け取ると" - {
+        "失敗を返す" in {
+          // Given
+          runCreateTaskBoard("test", "title")
+          // When
+          val result = runCreateTaskBoard("test", "title")
+          // Then
+          assert(result.reply.isError)
+        }
+
+        "イベントは記録されない" in {
+          // Given
+          runCreateTaskBoard("test", "title")
+          // When
+          val result = runCreateTaskBoard("test", "title")
+          // Then
+          assert(result.hasNoEvents)
+        }
+      }
+    }
+  }
 
   val eventSourcedTestKit: EventSourcedBehaviorTestKit[Command, Event, State] =
     EventSourcedBehaviorTestKit(
@@ -26,38 +76,14 @@ class TaskBoardAggregateTest
     )
 
   override def beforeEach(): Unit = {
+    println("beforeEach")
     super.beforeEach()
     eventSourcedTestKit.clear()
   }
 
-  "TaskBoardAggregate" when {
-    "Init" must {
-      "accept CreateTaskBoard" in {
-        val result = eventSourcedTestKit.runCommand[StatusReply[Done]](
-          CreateTaskBoard(TaskBoardId("test"), "test", _)
-        )
+  private def runCreateTaskBoard(taskBoardId: String, title: String) =
+    eventSourcedTestKit.runCommand[StatusReply[Done]](
+      CreateTaskBoard(TaskBoardId(taskBoardId), title, _)
+    )
 
-        assert(result.reply.isSuccess)
-        assert(result.event == TaskBoardCreated(TaskBoardId("test"), "test"))
-        assert(result.state == Created(
-          TaskBoard(TaskBoardId("test"))
-        ))
-      }
-    }
-
-    "Created" must {
-      "not accept CreateTaskBoard" in {
-        eventSourcedTestKit.runCommand[StatusReply[Done]](
-          CreateTaskBoard(TaskBoardId("test"), "test", _)
-        )
-
-        val result = eventSourcedTestKit.runCommand[StatusReply[Done]](
-          CreateTaskBoard(TaskBoardId("test"), "test", _)
-        )
-
-        assert(result.reply.isError)
-        assert(result.hasNoEvents)
-      }
-    }
-  }
 }
