@@ -48,13 +48,13 @@ abstract class CreateTaskBoardUseCaseIntegrationTest
     runOn(node1) {
       val future = sut.run(CreateTaskBoardRequest("test"))
       val response = Await.result(future, 5.second)
-      taskBoardId1 = response.taskBoardId
+      taskBoardId1 = response.asInstanceOf[CreateTaskBoardSuccess].taskBoardId
       enterBarrier("created")
     }
     runOn(node2) {
       val future = sut.run(CreateTaskBoardRequest("test"))
       val response = Await.result(future, 5.second)
-      taskBoardId2 = response.taskBoardId
+      taskBoardId2 = response.asInstanceOf[CreateTaskBoardSuccess].taskBoardId
       enterBarrier("created")
     }
 

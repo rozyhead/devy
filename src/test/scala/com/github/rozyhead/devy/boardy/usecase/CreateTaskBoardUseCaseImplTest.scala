@@ -4,7 +4,6 @@ import akka.actor.testkit.typed.scaladsl.{ScalaTestWithActorTestKit, TestProbe}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.pattern.StatusReply
-import com.github.rozyhead.devy.boardy.aggregate.TaskBoardIdGenerator.GenerateTaskBoardIdResponse
 import com.github.rozyhead.devy.boardy.aggregate.{
   TaskBoardAggregate,
   TaskBoardIdGenerator
@@ -24,6 +23,23 @@ class CreateTaskBoardUseCaseImplTest
 
   "TaskBoard作成ユースケース" - {
 
+    "TaskBoardIdGeneratorを使ってTaskBoardIdを生成する" in new Fixture {
+      // Given
+      override val mockedTaskBoardIdGeneratorProxyBehavior
+          : Behavior[TaskBoardIdGenerator.Command[_]] =
+        replySuccess("task-board-id")
+
+      override val mockedTaskBoardAggregateProxyBehavior
+          : Behavior[TaskBoardAggregate.Command] = replyAck
+
+      // When
+      whenReady(sut.run(CreateTaskBoardRequest("test"))) { _ =>
+        // Then
+        taskBoardIdGeneratorProxyProbe
+          .expectMessageType[TaskBoardIdGenerator.GenerateTaskBoardId]
+      }
+    }
+
     "生成したTaskBoardIdを返却する" in new Fixture {
       // Given
       override val mockedTaskBoardIdGeneratorProxyBehavior
@@ -37,7 +53,7 @@ class CreateTaskBoardUseCaseImplTest
       whenReady(sut.run(CreateTaskBoardRequest("test"))) { response =>
         // Then
         assert(
-          response == CreateTaskBoardResponse(
+          response == CreateTaskBoardSuccess(
             taskBoardId = TaskBoardId("task-board-id")
           )
         )
@@ -63,6 +79,41 @@ class CreateTaskBoardUseCaseImplTest
         assert(command.title == "test")
       }
     }
+
+    "(異常系)TaskBoardIdGeneratorがエラーを返却した場合" - {
+      "実行が失敗する" in new Fixture {
+        // Given
+        override val mockedTaskBoardIdGeneratorProxyBehavior
+            : Behavior[TaskBoardIdGenerator.Command[_]] = replyFailure()
+
+        override val mockedTaskBoardAggregateProxyBehavior
+            : Behavior[TaskBoardAggregate.Command] = replyAck
+
+        // When
+        whenReady(sut.run(CreateTaskBoardRequest("test"))) { response =>
+          // Then
+          response shouldBe a[CreateTaskBoardFailure]
+        }
+      }
+    }
+
+    "(異常系)TaskBoardAggregateProxyがエラーを返却した場合" - {
+      "実行が失敗する" in new Fixture {
+        // Given
+        override val mockedTaskBoardIdGeneratorProxyBehavior
+            : Behavior[TaskBoardIdGenerator.Command[_]] =
+          replySuccess("task-board-id")
+
+        override val mockedTaskBoardAggregateProxyBehavior
+            : Behavior[TaskBoardAggregate.Command] = replyError
+
+        // When
+        whenReady(sut.run(CreateTaskBoardRequest("test"))) { response =>
+          // Then
+          response shouldBe a[CreateTaskBoardFailure]
+        }
+      }
+    }
   }
 
   private trait Fixture
@@ -83,10 +134,20 @@ class CreateTaskBoardUseCaseImplTest
         msg match {
           case TaskBoardIdGenerator.GenerateTaskBoardId(replyTo) =>
             replyTo ! StatusReply.success(
-              GenerateTaskBoardIdResponse(
+              TaskBoardIdGenerator.GenerateTaskBoardIdResponse(
                 TaskBoardId(taskBoardId)
               )
             )
+        }
+        Behaviors.same
+      }
+    }
+
+    protected def replyFailure(): Behavior[TaskBoardIdGenerator.Command[_]] = {
+      Behaviors.receiveMessage[TaskBoardIdGenerator.Command[_]] { msg =>
+        msg match {
+          case TaskBoardIdGenerator.GenerateTaskBoardId(replyTo) =>
+            replyTo ! StatusReply.error("Failure")
         }
         Behaviors.same
       }
@@ -115,6 +176,12 @@ class CreateTaskBoardUseCaseImplTest
     protected val replyAck: Behaviors.Receive[TaskBoardAggregate.Command] =
       Behaviors.receiveMessage[TaskBoardAggregate.Command] { msg =>
         msg.replyTo ! StatusReply.ack()
+        Behaviors.same
+      }
+
+    protected val replyError: Behaviors.Receive[TaskBoardAggregate.Command] =
+      Behaviors.receiveMessage[TaskBoardAggregate.Command] { msg =>
+        msg.replyTo ! StatusReply.error("Failure")
         Behaviors.same
       }
 

@@ -21,9 +21,15 @@ case class CreateTaskBoardRequest(
     title: String
 )
 
-case class CreateTaskBoardResponse(
+sealed trait CreateTaskBoardResponse
+
+case class CreateTaskBoardSuccess(
     taskBoardId: TaskBoardId
-)
+) extends CreateTaskBoardResponse
+
+case class CreateTaskBoardFailure(
+    error: Throwable
+) extends CreateTaskBoardResponse
 
 class CreateTaskBoardUseCaseImpl(
     taskBoardIdGeneratorProxy: ActorRef[TaskBoardIdGenerator.Command[_]],
@@ -38,8 +44,8 @@ class CreateTaskBoardUseCaseImpl(
 
   override def run(
       request: CreateTaskBoardRequest
-  ): Future[CreateTaskBoardResponse] =
-    for {
+  ): Future[CreateTaskBoardResponse] = {
+    val future = for {
       generated <- taskBoardIdGeneratorProxy.askWithStatus(
         TaskBoardIdGenerator.GenerateTaskBoardId
       )
@@ -52,6 +58,11 @@ class CreateTaskBoardUseCaseImpl(
       )
     } yield {
       logger.info("TaskBoard created: {}", generated.taskBoardId)
-      CreateTaskBoardResponse(generated.taskBoardId)
+      CreateTaskBoardSuccess(generated.taskBoardId)
     }
+
+    future.recover {
+      case e: Throwable => CreateTaskBoardFailure(e)
+    }
+  }
 }
