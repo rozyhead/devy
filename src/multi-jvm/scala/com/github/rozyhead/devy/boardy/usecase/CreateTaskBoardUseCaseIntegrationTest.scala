@@ -3,12 +3,14 @@ package com.github.rozyhead.devy.boardy.usecase
 import akka.persistence.testkit.PersistenceTestKitPlugin
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{MultiNodeConfig, MultiNodeSpec}
+import akka.util.Timeout
 import com.github.rozyhead.akka.testkit.MultiNodeTypedClusterSpec
 import com.github.rozyhead.devy.boardy.aggregate.{
   TaskBoardAggregateProxy,
   TaskBoardIdGeneratorProxy
 }
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
+import com.github.rozyhead.devy.boardy.service.TaskBoardIdGeneratorServiceImpl
 import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.Await
@@ -31,10 +33,16 @@ abstract class CreateTaskBoardUseCaseIntegrationTest
   "be able to spawn" in {
     val taskBoardIdGeneratorProxy =
       spawn(TaskBoardIdGeneratorProxy(), "taskBoardIdGeneratorProxy")
+    val taskBoardIdGeneratorService =
+      new TaskBoardIdGeneratorServiceImpl(taskBoardIdGeneratorProxy)(
+        typedSystem,
+        Timeout(5.second)
+      )
+
     val taskBoardAggregateProxy =
       spawn(TaskBoardAggregateProxy(), "taskBoardAggregateProxy")
     sut = new CreateTaskBoardUseCaseImpl(
-      taskBoardIdGeneratorProxy,
+      taskBoardIdGeneratorService,
       taskBoardAggregateProxy
     )
 

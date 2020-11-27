@@ -9,42 +9,29 @@ import com.github.rozyhead.devy.boardy.aggregate.{
   TaskBoardIdGenerator
 }
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
+import com.github.rozyhead.devy.boardy.service.TaskBoardIdGeneratorService
+import org.scalamock.scalatest.MockFactory
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.freespec.AnyFreeSpecLike
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class CreateTaskBoardUseCaseImplTest
     extends ScalaTestWithActorTestKit
     with AnyFreeSpecLike
-    with ScalaFutures {
+    with ScalaFutures
+    with MockFactory {
 
   implicit val ec: ExecutionContext = testKit.system.executionContext
 
   "TaskBoard作成ユースケース" - {
-
-    "TaskBoardIdGeneratorを使ってTaskBoardIdを生成する" in new Fixture {
+    "生成したTaskBoardのIdを返却する" in new Fixture {
       // Given
-      override val mockedTaskBoardIdGeneratorProxyBehavior
-          : Behavior[TaskBoardIdGenerator.Command[_]] =
-        replySuccess("task-board-id")
-
-      override val mockedTaskBoardAggregateProxyBehavior
-          : Behavior[TaskBoardAggregate.Command] = replyAck
-
-      // When
-      whenReady(sut.run(CreateTaskBoardRequest("test"))) { _ =>
-        // Then
-        taskBoardIdGeneratorProxyProbe
-          .expectMessageType[TaskBoardIdGenerator.GenerateTaskBoardId]
-      }
-    }
-
-    "生成したTaskBoardIdを返却する" in new Fixture {
-      // Given
-      override val mockedTaskBoardIdGeneratorProxyBehavior
-          : Behavior[TaskBoardIdGenerator.Command[_]] =
-        replySuccess("task-board-id")
+      (mockedTaskBoardIdGeneratorService.generate _)
+        .expects()
+        .returning(Future {
+          TaskBoardId("task-board-id")
+        })
 
       override val mockedTaskBoardAggregateProxyBehavior
           : Behavior[TaskBoardAggregate.Command] = replyAck
@@ -62,9 +49,11 @@ class CreateTaskBoardUseCaseImplTest
 
     "TaskBoardAggregateProxyにコマンドCreateTaskBoardを送信する" in new Fixture {
       // Given
-      override val mockedTaskBoardIdGeneratorProxyBehavior
-          : Behavior[TaskBoardIdGenerator.Command[_]] =
-        replySuccess("task-board-id")
+      (mockedTaskBoardIdGeneratorService.generate _)
+        .expects()
+        .returning(Future {
+          TaskBoardId("task-board-id")
+        })
 
       override val mockedTaskBoardAggregateProxyBehavior
           : Behavior[TaskBoardAggregate.Command] = replyAck
@@ -80,11 +69,12 @@ class CreateTaskBoardUseCaseImplTest
       }
     }
 
-    "(異常系)TaskBoardIdGeneratorがエラーを返却した場合" - {
+    "(異常系)TaskBoardIdGeneratorServiceがエラーを返却した場合" - {
       "実行が失敗する" in new Fixture {
         // Given
-        override val mockedTaskBoardIdGeneratorProxyBehavior
-            : Behavior[TaskBoardIdGenerator.Command[_]] = replyFailure()
+        (mockedTaskBoardIdGeneratorService.generate _)
+          .expects()
+          .returning(Future.failed(new IllegalStateException()))
 
         override val mockedTaskBoardAggregateProxyBehavior
             : Behavior[TaskBoardAggregate.Command] = replyAck
@@ -100,9 +90,11 @@ class CreateTaskBoardUseCaseImplTest
     "(異常系)TaskBoardAggregateProxyがエラーを返却した場合" - {
       "実行が失敗する" in new Fixture {
         // Given
-        override val mockedTaskBoardIdGeneratorProxyBehavior
-            : Behavior[TaskBoardIdGenerator.Command[_]] =
-          replySuccess("task-board-id")
+        (mockedTaskBoardIdGeneratorService.generate _)
+          .expects()
+          .returning(Future {
+            TaskBoardId("task-board-id")
+          })
 
         override val mockedTaskBoardAggregateProxyBehavior
             : Behavior[TaskBoardAggregate.Command] = replyError
@@ -116,60 +108,14 @@ class CreateTaskBoardUseCaseImplTest
     }
   }
 
-  private trait Fixture
-      extends MockedTaskBoardIdGenerator
-      with MockedTaskBoardAggregateProxy {
+  private trait Fixture extends MockedTaskBoardAggregateProxy {
+    lazy val mockedTaskBoardIdGeneratorService: TaskBoardIdGeneratorService =
+      mock[TaskBoardIdGeneratorService]
 
     lazy val sut = new CreateTaskBoardUseCaseImpl(
-      mockedTaskBoardIdGeneratorProxy,
+      mockedTaskBoardIdGeneratorService,
       mockedTaskBoardAggregateProxy
     )
-  }
-
-  private trait MockedTaskBoardIdGenerator {
-    protected def replySuccess(
-        taskBoardId: => String
-    ): Behavior[TaskBoardIdGenerator.Command[_]] = {
-      Behaviors.receiveMessage[TaskBoardIdGenerator.Command[_]] { msg =>
-        msg match {
-          case TaskBoardIdGenerator.GenerateTaskBoardId(replyTo) =>
-            replyTo ! StatusReply.success(
-              TaskBoardIdGenerator.GenerateTaskBoardIdResponse(
-                TaskBoardId(taskBoardId)
-              )
-            )
-        }
-        Behaviors.same
-      }
-    }
-
-    protected def replyFailure(): Behavior[TaskBoardIdGenerator.Command[_]] = {
-      Behaviors.receiveMessage[TaskBoardIdGenerator.Command[_]] { msg =>
-        msg match {
-          case TaskBoardIdGenerator.GenerateTaskBoardId(replyTo) =>
-            replyTo ! StatusReply.error("Failure")
-        }
-        Behaviors.same
-      }
-    }
-
-    protected val mockedTaskBoardIdGeneratorProxyBehavior: Behavior[
-      TaskBoardIdGenerator.Command[_]
-    ]
-
-    protected val taskBoardIdGeneratorProxyProbe
-        : TestProbe[TaskBoardIdGenerator.Command[_]] =
-      testKit.createTestProbe[TaskBoardIdGenerator.Command[_]]()
-
-    protected def mockedTaskBoardIdGeneratorProxy
-        : ActorRef[TaskBoardIdGenerator.Command[_]] = {
-      testKit.spawn(
-        Behaviors.monitor(
-          taskBoardIdGeneratorProxyProbe.ref,
-          mockedTaskBoardIdGeneratorProxyBehavior
-        )
-      )
-    }
   }
 
   private trait MockedTaskBoardAggregateProxy {
