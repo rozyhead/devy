@@ -8,42 +8,37 @@ import akka.util.Timeout
 import com.github.rozyhead.akka.testkit.ActorStub
 import com.github.rozyhead.devy.boardy.aggregate.TaskBoardIdGenerator
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
+import org.scalatest.Assertion
 import org.scalatest.freespec.AsyncFreeSpecLike
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
-import scala.concurrent.TimeoutException
+import scala.concurrent.{Future, TimeoutException}
 
 class TaskBoardIdGeneratorServiceImplTest
     extends ScalaTestWithActorTestKit
     with AsyncFreeSpecLike {
 
   "TaskBoardIdを生成する" - {
-    "TaskBoardIdGeneratorProxyが正常終了する場合" - {
-      def stub =
-        ActorStub[TaskBoardIdGenerator.Command[_]](
-          system,
-          replySuccess("task-board-id")
-        )
-
-      def sut = new TaskBoardIdGeneratorServiceImpl(stub.ref)
-
-      "生成したTaskBoardIdを返す" in {
-        sut.generate().map { taskBoardId =>
-          assert(taskBoardId == TaskBoardId("task-board-id"))
+    "TaskBoardIdGeneratorProxyを呼び出す" in fixture(replySuccess("test")) {
+      (sut, stub) =>
+        sut.generate().map { _ =>
+          stub.probe
+            .expectMessageType[TaskBoardIdGenerator.GenerateTaskBoardId]
+          succeed
         }
+    }
+
+    "TaskBoardIdGeneratorProxyが正常終了する場合" - {
+      "生成したTaskBoardIdを返す" in fixture(replySuccess("task-board-id")) {
+        (sut, _) =>
+          sut.generate().map { taskBoardId =>
+            assert(taskBoardId == TaskBoardId("task-board-id"))
+          }
       }
     }
 
     "TaskBoardIdGeneratorProxyが異常終了する場合" - {
-      def stub =
-        ActorStub[TaskBoardIdGenerator.Command[_]](
-          system,
-          replyFailure("error")
-        )
-
-      def sut = new TaskBoardIdGeneratorServiceImpl(stub.ref)
-
-      "エラーを返す" in {
+      "エラーを返す" in fixture(replyFailure("error")) { (sut, _) =>
         recoverToSucceededIf[StatusReply.ErrorMessage] {
           sut.generate()
         }
@@ -51,15 +46,7 @@ class TaskBoardIdGeneratorServiceImplTest
     }
 
     "TaskBoardIdGeneratorProxyがタイムアウトする場合" - {
-      def stub =
-        ActorStub[TaskBoardIdGenerator.Command[_]](
-          system,
-          Behaviors.ignore
-        )
-
-      def sut = new TaskBoardIdGeneratorServiceImpl(stub.ref)
-
-      "エラーを返す" in {
+      "エラーを返す" in fixture(Behaviors.ignore) { (sut, _) =>
         recoverToSucceededIf[TimeoutException] {
           sut.generate()
         }
@@ -68,6 +55,18 @@ class TaskBoardIdGeneratorServiceImplTest
   }
 
   override implicit def timeout: Timeout = Timeout(100.millis)
+
+  def fixture(behavior: Behavior[TaskBoardIdGenerator.Command[_]])(
+      f: (
+          TaskBoardIdGeneratorService,
+          ActorStub[TaskBoardIdGenerator.Command[_]]
+      ) => Future[Assertion]
+  ): Future[Assertion] = {
+    val stub =
+      ActorStub[TaskBoardIdGenerator.Command[_]](system, behavior)
+    val sut = new TaskBoardIdGeneratorServiceImpl(stub.ref)
+    f(sut, stub)
+  }
 
   def replySuccess(
       taskBoardId: => String
