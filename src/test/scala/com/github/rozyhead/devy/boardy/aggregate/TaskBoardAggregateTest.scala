@@ -76,7 +76,6 @@ class TaskBoardAggregateTest
     )
 
   override def beforeEach(): Unit = {
-    println("beforeEach")
     super.beforeEach()
     eventSourcedTestKit.clear()
   }
