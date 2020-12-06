@@ -10,10 +10,13 @@ import com.github.rozyhead.devy.boardy.aggregate.{
   TaskBoardIdGeneratorProxy
 }
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
-import com.github.rozyhead.devy.boardy.service.TaskBoardIdGeneratorServiceImpl
+import com.github.rozyhead.devy.boardy.service.{
+  TaskBoardAggregateServiceImpl,
+  TaskBoardIdGeneratorServiceImpl
+}
 import com.typesafe.config.ConfigFactory
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.concurrent.duration.DurationInt
 
 abstract class CreateTaskBoardUseCaseIntegrationTest
@@ -31,19 +34,22 @@ abstract class CreateTaskBoardUseCaseIntegrationTest
   }
 
   "be able to spawn" in {
+    implicit val timeout: Timeout = Timeout(5.second)
+    implicit val ec: ExecutionContextExecutor = typedSystem.executionContext
+
     val taskBoardIdGeneratorProxy =
       spawn(TaskBoardIdGeneratorProxy(), "taskBoardIdGeneratorProxy")
     val taskBoardIdGeneratorService =
-      new TaskBoardIdGeneratorServiceImpl(taskBoardIdGeneratorProxy)(
-        typedSystem,
-        Timeout(5.second)
-      )
+      new TaskBoardIdGeneratorServiceImpl(taskBoardIdGeneratorProxy)
 
     val taskBoardAggregateProxy =
       spawn(TaskBoardAggregateProxy(), "taskBoardAggregateProxy")
+    val taskBoardAggregateService =
+      new TaskBoardAggregateServiceImpl(taskBoardAggregateProxy)
+
     sut = new CreateTaskBoardUseCaseImpl(
       taskBoardIdGeneratorService,
-      taskBoardAggregateProxy
+      taskBoardAggregateService
     )
 
     enterBarrier("deployed")

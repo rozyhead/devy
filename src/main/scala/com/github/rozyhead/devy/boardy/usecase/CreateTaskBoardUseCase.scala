@@ -1,14 +1,12 @@
 package com.github.rozyhead.devy.boardy.usecase
 
-import akka.actor.typed.scaladsl.AskPattern._
-import akka.actor.typed.{ActorRef, ActorSystem}
-import akka.util.Timeout
-import com.github.rozyhead.devy.boardy.aggregate.TaskBoardAggregate
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
-import com.github.rozyhead.devy.boardy.service.TaskBoardIdGeneratorService
+import com.github.rozyhead.devy.boardy.service.{
+  TaskBoardAggregateService,
+  TaskBoardIdGeneratorService
+}
 import org.slf4j.LoggerFactory
 
-import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 trait CreateTaskBoardUseCase {
@@ -31,27 +29,18 @@ case class CreateTaskBoardFailure(
 
 class CreateTaskBoardUseCaseImpl(
     taskBoardIdGeneratorService: TaskBoardIdGeneratorService,
-    taskBoardAggregateProxy: ActorRef[TaskBoardAggregate.Command]
-)(implicit val system: ActorSystem[_])
+    taskBoardAggregateService: TaskBoardAggregateService
+)(implicit val ec: ExecutionContext)
     extends CreateTaskBoardUseCase {
 
   private val logger = LoggerFactory.getLogger(getClass)
-
-  private implicit val ec: ExecutionContext = system.executionContext
-  private implicit val timeout: Timeout = Timeout(5.seconds)
 
   override def run(
       request: CreateTaskBoardRequest
   ): Future[CreateTaskBoardResponse] = {
     val future = for {
       taskBoardId <- taskBoardIdGeneratorService.generate()
-      _ <- taskBoardAggregateProxy.askWithStatus(
-        TaskBoardAggregate.CreateTaskBoard(
-          taskBoardId,
-          request.title,
-          _
-        )
-      )
+      _ <- taskBoardAggregateService.createTaskBoard(taskBoardId, request.title)
     } yield {
       logger.info("TaskBoard created: {}", taskBoardId)
       CreateTaskBoardSuccess(taskBoardId)
