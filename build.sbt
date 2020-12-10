@@ -27,14 +27,7 @@ libraryDependencies ++= Seq(
   "io.rest-assured" % "scala-support" % "4.3.2" % Test
 )
 
-lazy val EndToEndTest = config("e2e") extend Test
-lazy val e2eSettings = inConfig(EndToEndTest)(Defaults.testSettings) ++ Seq(
-  fork in EndToEndTest := false,
-  parallelExecution in EndToEndTest := false,
-  scalaSource in EndToEndTest := baseDirectory.value / "src/e2e/scala"
-)
-
 lazy val root = (project in file("."))
   .enablePlugins(MultiJvmPlugin)
-  .configs(MultiJvm, EndToEndTest)
-  .settings(inConfig(EndToEndTest)(Defaults.testSettings): _*)
+  .configs(Testing.configs: _*)
+  .settings(Testing.settings: _*)
