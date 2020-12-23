@@ -2,19 +2,36 @@ name: Scala CI
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            java: 11
+    runs-on: ${{ matrix.os }}
+    env:
+      # define Java options for both official sbt and sbt-extras
+      JAVA_OPTS: -Xms2048M -Xmx2048M -Xss6M -XX:ReservedCodeCacheSize=256M -Dfile.encoding=UTF-8
+      JVM_OPTS:  -Xms2048M -Xmx2048M -Xss6M -XX:ReservedCodeCacheSize=256M -Dfile.encoding=UTF-8
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up JDK 11
-      uses: actions/setup-java@v1
+    - name: Checkout
+      uses: actions/checkout@v1
+    - name: Setup
+      uses: olafurpg/setup-scala@v10
       with:
-        java-version: 11
-    - name: Run tests
-      run: ./sbt test multi-jvm:test e2e:test
+        java-version: "adopt@1.${{ matrix.java }}"
+    - name: Coursier cache
+      uses: coursier/cache-action@v5
+    - name: Build and test
+      run: |
+        sbt -v "scalafmtCheckAll; +testAll;"
+        rm -rf "$HOME/.ivy2/local" || true
+        find $HOME/Library/Caches/Coursier/v1        -name "ivydata-*.properties" -delete || true
+        find $HOME/.ivy2/cache                       -name "ivydata-*.properties" -delete || true
+        find $HOME/.cache/coursier/v1                -name "ivydata-*.properties" -delete || true
+        find $HOME/.sbt                              -name "*.lock"               -delete || true
+      shell: bash
