@@ -4,7 +4,11 @@ import akka.Done
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.pattern.StatusReply
 import akka.persistence.typed.PersistenceId
-import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior, ReplyEffect}
+import akka.persistence.typed.scaladsl.{
+  Effect,
+  EventSourcedBehavior,
+  ReplyEffect
+}
 import com.github.rozyhead.akka.util.JsonSerializable
 import com.github.rozyhead.devy.boardy.domain.model.{TaskBoard, TaskBoardId}
 
@@ -38,19 +42,28 @@ object TaskBoardAggregate {
   }
 
   case object Init extends State {
-    override def applyEvent(event: Event): State = event match {
-      case TaskBoardCreated(taskBoardId, _) => Created(TaskBoard(taskBoardId))
-      case _ => throw new IllegalStateException(s"unexpected event <$event> in state <Init>")
-    }
+    override def applyEvent(event: Event): State =
+      event match {
+        case TaskBoardCreated(taskBoardId, _) => Created(TaskBoard(taskBoardId))
+        case _ =>
+          throw new IllegalStateException(
+            s"unexpected event <$event> in state <Init>"
+          )
+      }
   }
 
   case class Created(taskBoard: TaskBoard) extends State {
-    override def applyEvent(event: Event): State = event match {
-      case _ => throw new IllegalStateException(s"unexpected event <$event> in state <Created>")
-    }
+    override def applyEvent(event: Event): State =
+      event match {
+        case _ =>
+          throw new IllegalStateException(
+            s"unexpected event <$event> in state <Created>"
+          )
+      }
   }
 
-  def apply(persistenceId: PersistenceId): Behavior[Command] = EventSourcedBehavior.withEnforcedReplies(
+  def apply(persistenceId: PersistenceId): Behavior[Command] =
+    EventSourcedBehavior.withEnforcedReplies(
       persistenceId = persistenceId,
       emptyState = Init,
       commandHandler = commandHandler(),
@@ -63,11 +76,21 @@ object TaskBoardAggregate {
       case Init =>
         command match {
           case c: CreateTaskBoard => createTaskBoard(c)
-          case _ =>  Effect.reply(command.replyTo)(StatusReply.error(s"unexpected command <$command> in state <$state>"))
+          case _ =>
+            Effect.reply(command.replyTo)(
+              StatusReply.error(
+                s"unexpected command <$command> in state <$state>"
+              )
+            )
         }
       case Created(taskBoard) =>
         command match {
-          case _ =>  Effect.reply(command.replyTo)(StatusReply.error(s"unexpected command <$command> in state <$state>"))
+          case _ =>
+            Effect.reply(command.replyTo)(
+              StatusReply.error(
+                s"unexpected command <$command> in state <$state>"
+              )
+            )
         }
     }
   }
