@@ -1,11 +1,31 @@
 package com.github.rozyhead.devy
 
-import akka.actor.typed.ActorSystem
-import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.{ActorRef, ActorSystem, Props, SpawnProtocol}
+import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
-import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCode}
+import akka.http.scaladsl.server.Directives
+import akka.util.Timeout
+import com.github.rozyhead.devy.boardy.aggregate.{
+  TaskBoardAggregate,
+  TaskBoardAggregateProxy,
+  TaskBoardIdGenerator,
+  TaskBoardIdGeneratorProxy
+}
+import com.github.rozyhead.devy.boardy.service.{
+  TaskBoardAggregateServiceImpl,
+  TaskBoardIdGeneratorServiceImpl
+}
+import com.github.rozyhead.devy.boardy.usecase.{
+  CreateTaskBoardFailure,
+  CreateTaskBoardSuccess,
+  CreateTaskBoardUseCase,
+  CreateTaskBoardUseCaseImpl
+}
+import org.slf4j.LoggerFactory
+import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
@@ -22,7 +42,23 @@ case object Stopping extends DevyServerState
 
 case object Stopped extends DevyServerState
 
-class DevyServer(val interface: String = "localhost", val port: Int = 8080) {
+case class CreateTaskBoardRequest(title: String)
+case class CreateTaskBoardResponse(id: String)
+
+trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
+  implicit val createTaskBoardRequestFormat
+      : RootJsonFormat[CreateTaskBoardRequest] =
+    jsonFormat1(CreateTaskBoardRequest)
+  implicit val createTaskBoardResponseFormat
+      : RootJsonFormat[CreateTaskBoardResponse] = jsonFormat1(
+    CreateTaskBoardResponse
+  )
+}
+
+class DevyServer(val interface: String = "localhost", val port: Int = 8080)
+    extends Directives
+    with JsonSupport {
+  private val logger = LoggerFactory.getLogger(classOf[DevyServer])
   private var state: DevyServerState = Stopped
 
   def baseUri: String = s"http://$interface:$port"
@@ -40,31 +76,90 @@ class DevyServer(val interface: String = "localhost", val port: Int = 8080) {
   }
 
   private def doStart(): Future[Unit] = {
+    logger.info("Starting {}", this)
+
     state = Starting
 
-    implicit val system: ActorSystem[Nothing] =
-      ActorSystem(Behaviors.empty, "devy-system")
+    import akka.actor.typed.scaladsl.AskPattern._
+    implicit val system: ActorSystem[SpawnProtocol.Command] =
+      ActorSystem(SpawnProtocol(), "devy-system")
     implicit val ec: ExecutionContextExecutor = system.executionContext
+    implicit val timeout: Timeout = Timeout(10.seconds)
 
-    val route =
-      path("hello") {
-        get {
-          complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, "Hello"))
-        }
-      }
+    val cluster = Cluster(system)
 
     val future = for {
-      binding <- Http().newServerAt(interface, port).bind(route)
+      taskBoardAggregateProxy <-
+        system.ask[ActorRef[TaskBoardAggregate.Command]](
+          SpawnProtocol.Spawn(
+            behavior = TaskBoardAggregateProxy(),
+            name = "taskBoardAggregateProxy",
+            props = Props.empty,
+            _
+          )
+        )
+      taskBoardIdGeneratorProxy <-
+        system.ask[ActorRef[TaskBoardIdGenerator.Command[_]]](
+          SpawnProtocol.Spawn(
+            behavior = TaskBoardIdGeneratorProxy(),
+            name = "taskBoardIdGeneratorProxy",
+            props = Props.empty,
+            _
+          )
+        )
+      taskBoardAggregateService = new TaskBoardAggregateServiceImpl(
+        taskBoardAggregateProxy
+      )
+      taskBoardIdGeneratorService = new TaskBoardIdGeneratorServiceImpl(
+        taskBoardIdGeneratorProxy
+      )
+      createTaskBoardUseCase = new CreateTaskBoardUseCaseImpl(
+        taskBoardIdGeneratorService,
+        taskBoardAggregateService
+      )
+      binding <-
+        Http().newServerAt(interface, port).bind(route(createTaskBoardUseCase))
     } yield {
       state = Started(binding, system)
+      logger.info("Started {}", this)
     }
 
     future.recoverWith {
       case error: Throwable =>
         state = Stopped
+        logger.info("Stopped {}", this)
         Future.failed(error)
     }
+
   }
+
+  import com.github.rozyhead.devy.boardy.usecase.{
+    CreateTaskBoardRequest => Request
+  }
+
+  private def route(
+      createTaskBoardUseCase: CreateTaskBoardUseCase
+  )(implicit ec: ExecutionContextExecutor) =
+    concat(
+      path("hello") {
+        get {
+          complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, "Hello"))
+        }
+      },
+      path("boardy" / "task-boards") {
+        post {
+          entity(as[CreateTaskBoardRequest]) { request =>
+            val future = createTaskBoardUseCase.run(Request(request.title))
+            onSuccess(future) {
+              case CreateTaskBoardSuccess(taskBoardId) =>
+                complete(CreateTaskBoardResponse(taskBoardId.value))
+              case CreateTaskBoardFailure(error) =>
+                complete(StatusCode.int2StatusCode(500), error.getMessage)
+            }
+          }
+        }
+      }
+    )
 
   def stop(): Future[Unit] = {
     state match {
@@ -86,11 +181,15 @@ class DevyServer(val interface: String = "localhost", val port: Int = 8080) {
 
     implicit val ec: ExecutionContextExecutor = system.executionContext
 
-    val future = for {
-      _ <- binding.unbind()
-    } yield {
+    def terminate(system: ActorSystem[_]) = {
       system.terminate()
       system.whenTerminated
+    }
+
+    val future = for {
+      _ <- binding.unbind()
+      _ <- terminate(system)
+    } yield {
       state = Stopped
     }
 
@@ -101,12 +200,15 @@ class DevyServer(val interface: String = "localhost", val port: Int = 8080) {
         Future.failed(error)
     }
   }
+
+  override def toString: String = s"DevyServer($baseUri)"
 }
 
 object DevyServer {
 
   def main(args: Array[String]): Unit = {
-    val server = new DevyServer()
+    val port = if (args.length > 0) args(0) else "8080"
+    val server = new DevyServer(port = port.toInt)
     Await.ready(server.start(), 5.seconds)
     StdIn.readLine()
     Await.ready(server.stop(), 5.seconds)
