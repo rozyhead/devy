@@ -5,13 +5,14 @@ import com.github.rozyhead.devy.boardy.service.{
   TaskBoardAggregateService,
   TaskBoardIdGeneratorService
 }
-import org.scalamock.scalatest.MockFactory
-import org.scalatest.FutureOutcome
+import org.scalamock.scalatest.AsyncMockFactory
 import org.scalatest.freespec.AsyncFreeSpec
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class CreateTaskBoardUseCaseImplTest extends AsyncFreeSpec with MockFactory {
+class CreateTaskBoardUseCaseImplTest
+    extends AsyncFreeSpec
+    with AsyncMockFactory {
 
   private implicit val ec: ExecutionContext = ExecutionContext.global
 
