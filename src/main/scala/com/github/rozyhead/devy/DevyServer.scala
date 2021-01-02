@@ -86,8 +86,6 @@ class DevyServer(val interface: String = "localhost", val port: Int = 8080)
     implicit val ec: ExecutionContextExecutor = system.executionContext
     implicit val timeout: Timeout = Timeout(10.seconds)
 
-    val cluster = Cluster(system)
-
     val future = for {
       taskBoardAggregateProxy <-
         system.ask[ActorRef[TaskBoardAggregate.Command]](

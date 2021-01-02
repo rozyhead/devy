@@ -2,7 +2,6 @@ package com.github.rozyhead.devy.boardy.e2e
 
 import com.github.rozyhead.devy.e2e.DevyServerTestKit
 import io.restassured.RestAssured._
-import io.restassured.filter.log.{RequestLoggingFilter, ResponseLoggingFilter}
 import io.restassured.http.ContentType
 import io.restassured.module.scala.RestAssuredSupport._
 import org.scalatest.freespec.AsyncFreeSpecLike
@@ -17,7 +16,6 @@ class CreateTaskBoardE2eTest extends DevyServerTestKit with AsyncFreeSpecLike {
       val response = given()
         .baseUri(server.baseUri)
         .contentType(ContentType.JSON)
-        .filters(new RequestLoggingFilter(), new ResponseLoggingFilter())
         .when()
         .body("""
             |{
