@@ -1,13 +1,16 @@
 package com.github.rozyhead.devy.boardy.aggregate
 
-import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.{ActorRef, Behavior, Props, SpawnProtocol}
 import akka.cluster.sharding.typed.scaladsl.{
   ClusterSharding,
   Entity,
   EntityTypeKey
 }
 import akka.persistence.typed.PersistenceId
+import com.github.rozyhead.devy.{UsesActorSystem, UsesTimeout}
+
+import scala.concurrent.Future
 
 /**
   * @author takeshi
@@ -40,4 +43,29 @@ object TaskBoardAggregateProxy {
     }
   }
 
+}
+
+trait UsesTaskBoardAggregateProxy {
+  val taskBoardAggregateProxy: Future[
+    ActorRef[TaskBoardAggregate.Command]
+  ]
+}
+
+trait MixinTaskBoardAggregateProxy
+    extends UsesTaskBoardAggregateProxy
+    with UsesActorSystem
+    with UsesTimeout {
+
+  import akka.actor.typed.scaladsl.AskPattern._
+
+  override lazy val taskBoardAggregateProxy
+      : Future[ActorRef[TaskBoardAggregate.Command]] =
+    actorSystem.ask[ActorRef[TaskBoardAggregate.Command]](
+      SpawnProtocol.Spawn(
+        behavior = TaskBoardAggregateProxy(),
+        name = "taskBoardAggregateProxy",
+        props = Props.empty,
+        _
+      )
+    )
 }

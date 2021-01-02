@@ -1,9 +1,12 @@
 package com.github.rozyhead.devy.boardy.usecase
 
+import com.github.rozyhead.devy.UsesExecutionContext
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
 import com.github.rozyhead.devy.boardy.service.{
   TaskBoardAggregateService,
-  TaskBoardIdGeneratorService
+  TaskBoardIdGeneratorService,
+  UsesTaskBoardAggregateService,
+  UsesTaskBoardIdGeneratorService
 }
 import org.slf4j.LoggerFactory
 
@@ -50,4 +53,22 @@ class CreateTaskBoardUseCaseImpl(
       case e: Throwable => CreateTaskBoardFailure(e)
     }
   }
+}
+trait UsesCreateTaskBoardUseCase {
+  val createTaskBoardUseCase: Future[CreateTaskBoardUseCase]
+}
+
+trait MixinCreateTaskBoardUseCase
+    extends UsesCreateTaskBoardUseCase
+    with UsesTaskBoardAggregateService
+    with UsesTaskBoardIdGeneratorService
+    with UsesExecutionContext {
+  override lazy val createTaskBoardUseCase: Future[CreateTaskBoardUseCase] =
+    for {
+      taskBoardAggregateService <- taskBoardAggregateService
+      taskBoardIdGeneratorService <- taskBoardIdGeneratorService
+    } yield new CreateTaskBoardUseCaseImpl(
+      taskBoardIdGeneratorService,
+      taskBoardAggregateService
+    )
 }

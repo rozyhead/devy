@@ -5,10 +5,16 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.server.Directives
 import akka.util.Timeout
+import com.typesafe.config.{Config, ConfigFactory}
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.concurrent.{
+  Await,
+  ExecutionContext,
+  ExecutionContextExecutor,
+  Future
+}
 import scala.io.StdIn
 
 sealed trait DevyServerState
@@ -22,8 +28,11 @@ case object Stopping extends DevyServerState
 
 case object Stopped extends DevyServerState
 
-class DevyServer(val interface: String = "localhost", val port: Int = 8080)
-    extends Directives
+class DevyServer(
+    val interface: String = "localhost",
+    val port: Int = 8080,
+    val config: Config = ConfigFactory.load()
+) extends Directives
     with JsonSupport {
   private val logger = LoggerFactory.getLogger(classOf[DevyServer])
   private var state: DevyServerState = Stopped
@@ -48,15 +57,17 @@ class DevyServer(val interface: String = "localhost", val port: Int = 8080)
     state = Starting
 
     implicit val system: ActorSystem[SpawnProtocol.Command] =
-      ActorSystem(SpawnProtocol(), "devy-system")
-    implicit val ec: ExecutionContextExecutor = system.executionContext
+      ActorSystem(SpawnProtocol(), "devy-system", config)
+    implicit val ec: ExecutionContext = system.executionContext
     implicit val timeout: Timeout = Timeout(10.seconds)
 
+    val serviceLocator = ServiceLocator(system, timeout)
+
     val future = for {
-      serviceLocator <- ServiceLocator(system, timeout)
+      createTaskBoardUseCase <- serviceLocator.createTaskBoardUseCase
       binding <- Http()
         .newServerAt(interface, port)
-        .bind(new RootController(serviceLocator.createTaskBoardUseCase).route)
+        .bind(new RootController(createTaskBoardUseCase).route)
     } yield {
       state = Started(binding, system)
       logger.info("Started {}", this)

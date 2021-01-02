@@ -1,9 +1,12 @@
 package com.github.rozyhead.devy.boardy.aggregate
 
+import akka.actor.typed._
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{Behavior, SupervisorStrategy}
 import akka.cluster.typed.{ClusterSingleton, SingletonActor}
 import akka.persistence.typed.PersistenceId
+import com.github.rozyhead.devy.{UsesActorSystem, UsesTimeout}
+
+import scala.concurrent.Future
 
 object TaskBoardIdGeneratorProxy {
   import TaskBoardIdGenerator._
@@ -33,4 +36,29 @@ object TaskBoardIdGeneratorProxy {
     }
   }
 
+}
+
+trait UsesTaskBoardIdGeneratorProxy {
+  val taskBoardIdGeneratorProxy: Future[
+    ActorRef[TaskBoardIdGenerator.Command[_]]
+  ]
+}
+
+trait MixinTaskBoardIdGeneratorProxy
+    extends UsesTaskBoardIdGeneratorProxy
+    with UsesActorSystem
+    with UsesTimeout {
+
+  import akka.actor.typed.scaladsl.AskPattern._
+
+  override lazy val taskBoardIdGeneratorProxy
+      : Future[ActorRef[TaskBoardIdGenerator.Command[_]]] =
+    actorSystem.ask[ActorRef[TaskBoardIdGenerator.Command[_]]](
+      SpawnProtocol.Spawn(
+        behavior = TaskBoardIdGeneratorProxy(),
+        name = "taskBoardIdGenerator",
+        props = Props.empty,
+        _
+      )
+    )
 }

@@ -3,8 +3,16 @@ package com.github.rozyhead.devy.boardy.service
 import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
 import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.util.Timeout
-import com.github.rozyhead.devy.boardy.aggregate.TaskBoardAggregate
+import com.github.rozyhead.devy.boardy.aggregate.{
+  TaskBoardAggregate,
+  UsesTaskBoardAggregateProxy
+}
 import com.github.rozyhead.devy.boardy.domain.model.TaskBoardId
+import com.github.rozyhead.devy.{
+  UsesActorSystem,
+  UsesExecutionContext,
+  UsesTimeout
+}
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -38,4 +46,20 @@ class TaskBoardAggregateServiceImpl(
       logger.info("TaskBoard generated: {}", taskBoardId)
       ()
     }
+}
+
+trait UsesTaskBoardAggregateService {
+  val taskBoardAggregateService: Future[TaskBoardAggregateService]
+}
+
+trait MixinTaskBoardAggregateService
+    extends UsesTaskBoardAggregateService
+    with UsesTaskBoardAggregateProxy
+    with UsesActorSystem
+    with UsesTimeout
+    with UsesExecutionContext {
+  override lazy val taskBoardAggregateService
+      : Future[TaskBoardAggregateService] = for {
+    taskBoardAggregateProxy <- taskBoardAggregateProxy
+  } yield new TaskBoardAggregateServiceImpl(taskBoardAggregateProxy)
 }

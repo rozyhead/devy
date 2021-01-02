@@ -11,15 +11,12 @@ import com.github.rozyhead.devy.boardy.usecase.{
 }
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
-import scala.concurrent.ExecutionContextExecutor
-
 /**
   * @author takeshi
   */
 class RootController(
     createTaskBoardUseCase: CreateTaskBoardUseCase
-)(implicit ec: ExecutionContextExecutor)
-    extends Directives
+) extends Directives
     with JsonSupport {
 
   val route: Route =
