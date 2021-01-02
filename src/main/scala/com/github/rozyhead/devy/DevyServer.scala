@@ -1,21 +1,10 @@
 package com.github.rozyhead.devy
 
-import akka.actor.typed.{ActorRef, ActorSystem, Props, SpawnProtocol}
+import akka.actor.typed.{ActorSystem, SpawnProtocol}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.server.Directives
 import akka.util.Timeout
-import com.github.rozyhead.devy.boardy.aggregate.{
-  TaskBoardAggregate,
-  TaskBoardAggregateProxy,
-  TaskBoardIdGenerator,
-  TaskBoardIdGeneratorProxy
-}
-import com.github.rozyhead.devy.boardy.service.{
-  TaskBoardAggregateServiceImpl,
-  TaskBoardIdGeneratorServiceImpl
-}
-import com.github.rozyhead.devy.boardy.usecase.CreateTaskBoardUseCaseImpl
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
@@ -58,44 +47,16 @@ class DevyServer(val interface: String = "localhost", val port: Int = 8080)
 
     state = Starting
 
-    import akka.actor.typed.scaladsl.AskPattern._
     implicit val system: ActorSystem[SpawnProtocol.Command] =
       ActorSystem(SpawnProtocol(), "devy-system")
     implicit val ec: ExecutionContextExecutor = system.executionContext
     implicit val timeout: Timeout = Timeout(10.seconds)
 
     val future = for {
-      taskBoardAggregateProxy <-
-        system.ask[ActorRef[TaskBoardAggregate.Command]](
-          SpawnProtocol.Spawn(
-            behavior = TaskBoardAggregateProxy(),
-            name = "taskBoardAggregateProxy",
-            props = Props.empty,
-            _
-          )
-        )
-      taskBoardIdGeneratorProxy <-
-        system.ask[ActorRef[TaskBoardIdGenerator.Command[_]]](
-          SpawnProtocol.Spawn(
-            behavior = TaskBoardIdGeneratorProxy(),
-            name = "taskBoardIdGeneratorProxy",
-            props = Props.empty,
-            _
-          )
-        )
-      taskBoardAggregateService = new TaskBoardAggregateServiceImpl(
-        taskBoardAggregateProxy
-      )
-      taskBoardIdGeneratorService = new TaskBoardIdGeneratorServiceImpl(
-        taskBoardIdGeneratorProxy
-      )
-      createTaskBoardUseCase = new CreateTaskBoardUseCaseImpl(
-        taskBoardIdGeneratorService,
-        taskBoardAggregateService
-      )
+      serviceLocator <- ServiceLocator(system, timeout)
       binding <- Http()
         .newServerAt(interface, port)
-        .bind(new RootController(createTaskBoardUseCase).route)
+        .bind(new RootController(serviceLocator.createTaskBoardUseCase).route)
     } yield {
       state = Started(binding, system)
       logger.info("Started {}", this)
